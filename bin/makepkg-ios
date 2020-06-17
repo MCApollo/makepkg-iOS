@@ -1,6 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
-#   makepkg - make packages compatible for use with pacman
+#   makepkg - make packages compatible for use with iOS-darwin -> dpkg
 #
 #   Copyright (c) 2006-2020 Pacman Development Team <pacman-dev@archlinux.org>
 #   Copyright (c) 2002-2006 by Judd Vinet <jvinet@zeroflux.org>
@@ -30,9 +30,6 @@
 #   gettext, gpg, grep, gzip, sed, tput (ncurses), xz
 
 # gettext initialization
-export TEXTDOMAIN='pacman-scripts'
-export TEXTDOMAINDIR='@localedir@'
-
 # file -i does not work on Mac OSX unless legacy mode is set
 export COMMAND_MODE='legacy'
 # Ensure CDPATH doesn't screw with our cd calls
@@ -40,15 +37,16 @@ unset CDPATH
 # Ensure GREP_OPTIONS doesn't screw with our grep calls
 unset GREP_OPTIONS
 
-declare -r makepkg_version='@PACKAGE_VERSION@'
-declare -r confdir='@sysconfdir@'
-declare -r BUILDSCRIPT='@BUILDSCRIPT@'
+declare -r makepkg_location="$(realpath "$(dirname ${0})/../")"
+declare -r makepkg_version="$(cat "${makepkg_location}/.version")"
+declare -r confdir="${makepkg_location:-/nonexist}/config"
+# Replace PKGBUILD to a cheesy:
+declare -r BUILDSCRIPT='IBUILD'
 declare -r startdir="$(pwd -P)"
 
-LIBRARY=${LIBRARY:-'@libmakepkgdir@'}
+LIBRARY=${LIBRARY:-"${makepkg_location}/lib"}
 
 # Options
-ASDEPS=0
 BUILDFUNC=0
 BUILDPKG=1
 CHECKFUNC=0
@@ -62,7 +60,6 @@ IGNOREARCH=0
 INFAKEROOT=0
 INSTALL=0
 LOGGING=0
-NEEDED=0
 NOARCHIVE=0
 NOBUILD=0
 NODEPS=0
@@ -79,6 +76,8 @@ SIGNPKG=''
 SPLITPKG=0
 SOURCEONLY=0
 VERIFYSOURCE=0
+# custom
+ENABLE_GETTEXT=0
 
 if [[ -n $SOURCE_DATE_EPOCH ]]; then
 	REPRODUCIBLE=1
@@ -87,7 +86,7 @@ else
 fi
 export SOURCE_DATE_EPOCH
 
-PACMAN_OPTS=()
+DPKG_OPTS=()
 
 shopt -s extglob
 
@@ -829,6 +828,7 @@ create_srcpackage() {
 	rm -rf "${srclinks}"
 }
 
+# XXX: REMOVE ME
 install_package() {
 	(( ! INSTALL )) && return 0
 
@@ -992,13 +992,6 @@ usage() {
 	printf -- "$(gettext "  --skippgpcheck   Do not verify source files with PGP signatures")\n"
 	printf -- "$(gettext "  --verifysource   Download source files (if needed) and perform integrity checks")\n"
 	echo
-	printf -- "$(gettext "These options can be passed to %s:")\n" "pacman"
-	echo
-	printf -- "$(gettext "  --asdeps         Install packages as non-explicitly installed")\n"
-	printf -- "$(gettext "  --needed         Do not reinstall the targets that are already up to date")\n"
-	printf -- "$(gettext "  --noconfirm      Do not ask for confirmation when resolving dependencies")\n"
-	printf -- "$(gettext "  --noprogressbar  Do not show a progress bar when downloading files")\n"
-	echo
 	printf -- "$(gettext "If %s is not specified, %s will look for '%s'")\n" "-p" "makepkg" "$BUILDSCRIPT"
 	echo
 }
@@ -1019,7 +1012,7 @@ There is NO WARRANTY, to the extent permitted by law.\n")"
 umask 0022
 
 # determine whether we have gettext; make it a no-op if we do not
-if ! type -p gettext >/dev/null; then
+if ! type -p gettext >/dev/null && ! (( ENABLE_GETTEXT )); then
 	gettext() {
 		printf "%s\n" "$@"
 	}
@@ -1035,9 +1028,6 @@ OPT_LONG=('allsource' 'check' 'clean' 'cleanbuild' 'config:' 'force' 'geninteg'
           'printsrcinfo' 'repackage' 'rmdeps' 'sign' 'skipchecksums' 'skipinteg'
           'skippgpcheck' 'source' 'syncdeps' 'verifysource' 'version')
 
-# Pacman Options
-OPT_LONG+=('asdeps' 'noconfirm' 'needed' 'noprogressbar')
-
 if ! parseopts "$OPT_SHORT" "${OPT_LONG[@]}" -- "$@"; then
 	exit $E_INVALID_OPTION
 fi
@@ -1046,12 +1036,6 @@ unset OPT_SHORT OPT_LONG OPTRET
 
 while true; do
 	case "$1" in
-		# Pacman Options
-		--asdeps)         ASDEPS=1;;
-		--needed)         NEEDED=1;;
-		--noconfirm)      PACMAN_OPTS+=("--noconfirm") ;;
-		--noprogressbar)  PACMAN_OPTS+=("--noprogressbar") ;;
-
 		# Makepkg Options
 		--allsource)      BUILDPKG=0 SOURCEONLY=2 ;;
 		-A|--ignorearch)  IGNOREARCH=1 ;;
